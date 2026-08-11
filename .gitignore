@@ -1,0 +1,74 @@
+# ==========================
+# React
+# ==========================
+
+Frontend/node_modules/
+Frontend/build/
+Frontend/dist/
+
+# React environment files
+Frontend/.env
+Frontend/.env.*
+Frontend/*.env
+
+
+# ==========================
+# Spring Boot / Maven
+# ==========================
+
+Backend/target/
+Backend/.mvn/
+
+# Eclipse
+Backend/.classpath
+Backend/.project
+Backend/.settings/
+
+# Java
+*.class
+
+
+# ==========================
+# Secrets / Environment
+# ==========================
+
+.env
+.env.*
+*.env
+
+# Local Spring configuration
+**/application-local.properties
+**/application-local.yml
+**/application-secret.properties
+**/application-secret.yml
+
+
+# ==========================
+# Database
+# ==========================
+
+*.sql
+*.db
+*.sqlite
+*.sqlite3
+
+**/database/
+**/db/
+**/data/
+
+
+# ==========================
+# IDE
+# ==========================
+
+.vscode/
+.idea/
+*.iml
+
+
+# ==========================
+# OS
+# ==========================
+
+.DS_Store
+Thumbs.db
