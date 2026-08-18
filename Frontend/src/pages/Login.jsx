@@ -1,763 +1,859 @@
-import { useState, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { User, Lock, Eye, EyeOff, Mail, ArrowRight, Loader2 } from "lucide-react";
-import { login } from "../services/authService";
-import RotatingRing from "../components/RotatingRing";
-import AnimatedLock from "../components/AnimatedLock";
-import AnimatedKey from "../components/AnimatedKey";
+import React, { useState } from "react";
+import {
+  Box,
+  Paper,
+  TextField,
+  Button,
+  Typography,
+  InputAdornment,
+  IconButton,
+  Alert,
+  CircularProgress,
+  Divider,
+} from "@mui/material";
 
-function Login() {
+import {
+  Visibility,
+  VisibilityOff,
+  LockOutlined,
+  Person,
+  SchoolOutlined,
+  AdminPanelSettingsOutlined,
+  MeetingRoomOutlined,
+  DashboardOutlined,
+} from "@mui/icons-material";
+
+import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
+import api from "../api/api";
+
+const MotionBox = motion(Box);
+
+function AnimatedIcon({ children }) {
+  return (
+    <MotionBox
+      animate={{
+        y: [0, -6, 0],
+        rotate: [-2, 2, -2],
+      }}
+      transition={{
+        duration: 3,
+        repeat: Infinity,
+        ease: "easeInOut",
+      }}
+      sx={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      {children}
+    </MotionBox>
+  );
+}
+
+export default function Login() {
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Animation state machine
-  const [animState, setAnimState] = useState("idle");
-  // idle | signing | keyEntering | keyInserted | keyTurning | unlocking | granted | denied | fadingOut
-
-  const [lockState, setLockState] = useState("idle");
-  const [keyState, setKeyState] = useState("idle");
-  const [showKey, setShowKey] = useState(false);
-  const [showSuccess, setShowSuccess] = useState("");
-  const [authSuccess, setAuthSuccess] = useState(false);
-  const [isFadingOut, setIsFadingOut] = useState(false);
-  const [isFadingIn, setIsFadingIn] = useState(false);
-  const [showCard, setShowCard] = useState(true);
-
-  const emailRef = useRef(null);
-  const passwordRef = useRef(null);
-
   const handleLogin = async (e) => {
     e.preventDefault();
+
     setError("");
 
-    if (!email.trim() || !password.trim()) {
-      setError("Please enter both username and password");
+    if (!username.trim() || !password.trim()) {
+      setError("Please enter username and password.");
       return;
     }
 
     setLoading(true);
 
-    // Start animation sequence
-    setAnimState("signing");
-    setLockState("idle");
+    try {
+      // Clear previous authentication data
+      sessionStorage.removeItem("token");
+      sessionStorage.removeItem("role");
+      sessionStorage.removeItem("studentId");
+      sessionStorage.removeItem("studentName");
+      sessionStorage.removeItem("roomNumber");
+      sessionStorage.removeItem("username");
+      localStorage.removeItem("studentId");
+      localStorage.removeItem("studentName");
+      localStorage.removeItem("roomNumber");
 
-    // Step 1-2: Button changes to "Signing In..." with spinner
-    setTimeout(() => {
-      // Step 3: Key appears from the right
-      setShowKey(true);
-      setKeyState("entering");
-      setAnimState("keyEntering");
+      // Login request
+      const response = await api.post("/auth/login", {
+        username: username.trim(),
+        password: password,
+      });
 
-      // Step 4: Key slides toward lock
-      setTimeout(() => {
-        setKeyState("inserted");
-        setAnimState("keyInserted");
+      console.log("LOGIN RESPONSE:", response.data);
 
-        // Now call the actual API to check credentials
-        const performLogin = async () => {
-          try {
-            const res = await login(email, password);
+      const data = response.data;
 
-            console.log("Login Response:", res);
+      // ==========================
+      // GET JWT
+      // ==========================
 
-            if (!res.success) {
-              // FAILED LOGIN: Key enters, lock refuses
-              setAnimState("denied");
-              setLockState("denied");
+      const token =
+        data.token ||
+        data.accessToken ||
+        data.jwt;
 
-              // Step 5b: Key rotates back
-              setTimeout(() => {
-                setKeyState("removing");
+      if (!token) {
+        setError(
+          "Login failed: authentication token not received."
+        );
+        return;
+      }
 
-                // Step 6b: Key comes out
-                setTimeout(() => {
-                  setShowKey(false);
-                  // Lock shakes
-                  setLockState("idle");
-                  setAnimState("idle");
-                  setLoading(false);
-                  setError(res.message || "Invalid Email or Password");
-                  setKeyState("idle");
-                }, 500);
-              }, 400);
+      // ==========================
+      // GET ROLE
+      // ==========================
 
-              return;
-            }
+      let role =
+        data.role ||
+        data.userRole ||
+        data.authority;
 
-            // SUCCESS: Continue animation
-            // Step 5: Key rotates 90 degrees
-            setKeyState("turning");
-            setAnimState("keyTurning");
+      if (role) {
+        role = role
+          .toString()
+          .replace("ROLE_", "")
+          .toLowerCase();
+      }
 
-            setTimeout(() => {
-              // Step 6: Lock opens
-              setLockState("unlocked");
-              setAnimState("unlocking");
+      // ==========================
+      // DECODE JWT IF ROLE MISSING
+      // ==========================
 
-              // Step 7: Display Access Granted
-              setTimeout(() => {
-                setShowSuccess("Access Granted");
-                setAnimState("granted");
+      if (!role) {
+        try {
+          const payload = JSON.parse(
+            atob(
+              token
+                .split(".")[1]
+                .replace(/-/g, "+")
+                .replace(/_/g, "/")
+            )
+          );
 
-                // Save login data
-                localStorage.setItem("token", res.token);
-                localStorage.setItem("role", res.role);
-
-                if (res.role === "admin") {
-                  localStorage.setItem("adminName", email);
-                } else {
-                  localStorage.setItem("studentId", String(res.studentId));
-                  localStorage.setItem("studentName", res.studentName);
-                  localStorage.setItem("mobile", res.mobile);
-                  localStorage.setItem("roomNumber", res.roomNo);
-                }
-
-                // Step 8: Card fades away, dashboard fades in
-                setTimeout(() => {
-                  setAnimState("fadingOut");
-                  setIsFadingOut(true);
-                  setAuthSuccess(true);
-
-                  setTimeout(() => {
-                    setShowCard(false);
-                    setIsFadingIn(true);
-
-                    // Navigate based on role
-                    setTimeout(() => {
-                      if (res.role === "admin") {
-                        navigate("/admin");
-                      } else {
-                        navigate("/student");
-                      }
-                    }, 600);
-                  }, 600);
-                }, 800);
-              }, 600);
-            }, 400);
-          } catch (err) {
-            console.error(err);
-            // Failed login animation
-            setAnimState("denied");
-            setLockState("denied");
-
-            setTimeout(() => {
-              setKeyState("removing");
-              setTimeout(() => {
-                setShowKey(false);
-                setLockState("idle");
-                setAnimState("idle");
-                setLoading(false);
-                setError("Login Failed. Please try again.");
-                setKeyState("idle");
-              }, 500);
-            }, 400);
+          if (payload.role) {
+            role = payload.role
+              .toString()
+              .replace("ROLE_", "")
+              .toLowerCase();
           }
-        };
+        } catch (jwtError) {
+          console.error("JWT decode error:", jwtError);
+        }
+      }
 
-        performLogin();
-      }, 600); // Key slides for 600ms
-    }, 300); // Button morphs for 300ms
-  };
+      if (!role) {
+        setError(
+          "Login failed: user role was not received."
+        );
+        return;
+      }
 
-  // Handle rollback trigger "kk1"
-  const handleKeyDown = (e) => {
-    if (e.key === "k" && e.ctrlKey) {
-      // Check for kk1 via input combination
+      // ==========================
+      // SAVE AUTHENTICATION
+      // ==========================
+
+      sessionStorage.setItem("token", token);
+      sessionStorage.setItem("role", role);
+      sessionStorage.setItem(
+        "username",
+        username.trim()
+      );
+
+      // ==========================
+      // SAVE STUDENT DATA
+      // Keep auth data in sessionStorage and mirror the student
+      // fields in localStorage because older student pages used it.
+      // ==========================
+
+      const studentId = data.studentId ?? data.id ?? data.student?.id;
+      const studentName =
+        data.studentName ?? data.name ?? data.student?.name;
+      const roomNumber =
+        data.roomNo ?? data.roomNumber ?? data.room?.roomNo ?? data.student?.roomNo ?? data.student?.roomNumber;
+
+      if (studentId !== undefined && studentId !== null) {
+        sessionStorage.setItem("studentId", String(studentId));
+        localStorage.setItem("studentId", String(studentId));
+      }
+
+      if (studentName) {
+        sessionStorage.setItem("studentName", String(studentName));
+        localStorage.setItem("studentName", String(studentName));
+      }
+
+      if (roomNumber !== undefined && roomNumber !== null && String(roomNumber).trim() !== "") {
+        sessionStorage.setItem("roomNumber", String(roomNumber));
+        localStorage.setItem("roomNumber", String(roomNumber));
+      }
+
+      console.log("LOGIN ROLE:", role);
+      console.log(
+        "TOKEN SAVED:",
+        !!sessionStorage.getItem("token")
+      );
+
+      // ==========================
+      // REDIRECT
+      // ==========================
+
+      if (role === "student") {
+        navigate("/student", {
+          replace: true,
+        });
+
+        return;
+      }
+
+      if (
+        role === "admin" ||
+        role === "junior_admin"
+      ) {
+        navigate("/admin", {
+          replace: true,
+        });
+
+        return;
+      }
+
+      // Unknown role
+      sessionStorage.clear();
+
+      setError(
+        "Invalid user role. Please contact administrator."
+      );
+    } catch (err) {
+      console.error("LOGIN ERROR:", err);
+
+      if (err.response) {
+        if (err.response.status === 401) {
+          setError("Invalid username or password.");
+        } else if (err.response.status === 403) {
+          setError(
+            "Access denied. Please contact administrator."
+          );
+        } else if (err.response.data) {
+          if (
+            typeof err.response.data === "string"
+          ) {
+            setError(err.response.data);
+          } else {
+            setError(
+              err.response.data.message ||
+                "Login failed. Please try again."
+            );
+          }
+        } else {
+          setError(
+            "Login failed. Please try again."
+          );
+        }
+      } else {
+        setError(
+          "Unable to connect to server. Please check that the backend is running."
+        );
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  const fadeInVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
-    exit: { opacity: 0, y: -20, scale: 0.98, transition: { duration: 0.5, ease: "easeIn" } },
-  };
-
-  const cardVariants = {
-    hidden: { opacity: 0, scale: 0.95 },
-    visible: {
-      opacity: 1,
-      scale: 1,
-      transition: { duration: 0.5, ease: "easeOut" },
-    },
-    exit: { opacity: 0, scale: 0.9, y: -30, transition: { duration: 0.6, ease: "easeIn" } },
-  };
-
-const buttonVariants = {
-    idle: { scale: 1 },
-    hover: { scale: 1.03, boxShadow: "0 0 30px rgba(139,92,246,0.5), 0 0 60px rgba(139,92,246,0.2)" },
-    tap: { scale: 0.98 },
-    loading: { scale: 1 },
-  };
-
   return (
-    <AnimatePresence mode="wait">
-      {showCard ? (
-        <motion.div
-          key="login-page"
-          initial="hidden"
-          animate="visible"
-          exit="exit"
-          variants={fadeInVariants}
-          style={{
-            minHeight: "100vh",
-            width: "100%",
+    <Box
+      sx={{
+        minHeight: "100vh",
+        width: "100%",
+        display: "flex",
+        background:
+          "linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%)",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      {/* ==========================
+          BACKGROUND DECORATIONS
+      ========================== */}
+
+      <MotionBox
+        animate={{
+          x: [0, 40, 0],
+          y: [0, -30, 0],
+        }}
+        transition={{
+          duration: 8,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+        sx={{
+          position: "absolute",
+          width: 300,
+          height: 300,
+          borderRadius: "50%",
+          background:
+            "rgba(255,255,255,0.08)",
+          top: -100,
+          left: -100,
+          filter: "blur(2px)",
+        }}
+      />
+
+      <MotionBox
+        animate={{
+          x: [0, -40, 0],
+          y: [0, 30, 0],
+        }}
+        transition={{
+          duration: 9,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+        sx={{
+          position: "absolute",
+          width: 350,
+          height: 350,
+          borderRadius: "50%",
+          background:
+            "rgba(255,255,255,0.07)",
+          bottom: -150,
+          right: -100,
+        }}
+      />
+
+      {/* ==========================
+          LEFT BRANDING
+      ========================== */}
+
+      <Box
+        sx={{
+          display: {
+            xs: "none",
+            md: "flex",
+          },
+          width: "50%",
+          flexDirection: "column",
+          justifyContent: "center",
+          px: {
+            md: 6,
+            lg: 10,
+          },
+          color: "white",
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
+        {/* Logo */}
+
+        <Box
+          sx={{
             display: "flex",
-background: "#1E1B4B",
-            position: "relative",
-            overflow: "hidden",
-            fontFamily: "'Poppins', 'Inter', system-ui, sans-serif",
+            alignItems: "center",
+            gap: 2,
+            mb: 4,
           }}
         >
-          {/* Background gradients */}
-          <div
-            style={{
-              position: "absolute",
-              top: "-20%",
-              left: "-10%",
-              width: "60%",
-              height: "60%",
+          <Box
+            sx={{
+              width: 60,
+              height: 60,
+              borderRadius: "18px",
               background:
-                "radial-gradient(circle, rgba(139,92,246,0.12) 0%, transparent 60%)",
-              pointerEvents: "none",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              bottom: "-20%",
-              right: "-10%",
-              width: "60%",
-              height: "60%",
-background:
-                "radial-gradient(circle, rgba(139,92,246,0.08) 0%, transparent 60%)",
-              pointerEvents: "none",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              width: "80%",
-              height: "80%",
-              background:
-                "radial-gradient(circle, rgba(139,92,246,0.06) 0%, transparent 50%)",
-              pointerEvents: "none",
-            }}
-          />
-
-          {/* Floating soft dots grid */}
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              backgroundImage:
-                "radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px)",
-              backgroundSize: "40px 40px",
-              pointerEvents: "none",
-            }}
-          />
-
-          {/* Center Content */}
-          <div
-            style={{
-              flex: 1,
+                "rgba(255,255,255,0.15)",
+              backdropFilter: "blur(10px)",
               display: "flex",
-              justifyContent: "center",
               alignItems: "center",
-              position: "relative",
-              zIndex: 1,
+              justifyContent: "center",
+              border:
+                "1px solid rgba(255,255,255,0.25)",
             }}
           >
-            {/* Rotating Ring around the card */}
-            <div
-              style={{
-                position: "absolute",
+            <DashboardOutlined
+              sx={{
+                fontSize: 34,
+              }}
+            />
+          </Box>
+
+          <Box>
+            <Typography
+              variant="h4"
+              fontWeight={800}
+              sx={{
+                letterSpacing: "-1px",
+              }}
+            >
+              Hostel ERP
+            </Typography>
+
+            <Typography
+              sx={{
+                opacity: 0.8,
+              }}
+            >
+              Hostel Management System
+            </Typography>
+          </Box>
+        </Box>
+
+        <Typography
+          variant="h2"
+          fontWeight={800}
+          sx={{
+            fontSize: {
+              md: "42px",
+              lg: "52px",
+            },
+            lineHeight: 1.1,
+            mb: 2,
+          }}
+        >
+          Manage your hostel
+          <br />
+
+          <Box
+            component="span"
+            sx={{
+              opacity: 0.8,
+            }}
+          >
+            smarter.
+          </Box>
+        </Typography>
+
+        <Typography
+          sx={{
+            maxWidth: 520,
+            fontSize: 17,
+            opacity: 0.85,
+            lineHeight: 1.7,
+            mb: 5,
+          }}
+        >
+          A modern hostel management platform
+          designed to simplify students, employees,
+          rooms, fees and outpass management.
+        </Typography>
+
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 2.2,
+          }}
+        >
+          <Feature
+            icon={<MeetingRoomOutlined />}
+            title="Room Management"
+            description="Manage rooms and occupancy easily."
+          />
+
+          <Feature
+            icon={<SchoolOutlined />}
+            title="Student Portal"
+            description="Give students access to their information."
+          />
+
+          <Feature
+            icon={<AdminPanelSettingsOutlined />}
+            title="Admin Panel"
+            description="Complete control over hostel operations."
+          />
+        </Box>
+      </Box>
+
+      {/* ==========================
+          RIGHT LOGIN
+      ========================== */}
+
+      <Box
+        sx={{
+          width: {
+            xs: "100%",
+            md: "50%",
+          },
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          px: {
+            xs: 2,
+            sm: 4,
+          },
+          py: 4,
+          position: "relative",
+          zIndex: 2,
+        }}
+      >
+        <motion.div
+          initial={{
+            opacity: 0,
+            y: 30,
+          }}
+          animate={{
+            opacity: 1,
+            y: 0,
+          }}
+          transition={{
+            duration: 0.6,
+          }}
+          style={{
+            width: "100%",
+            maxWidth: "480px",
+          }}
+        >
+          <Paper
+            elevation={0}
+            sx={{
+              p: {
+                xs: 3,
+                sm: 5,
+              },
+              borderRadius: "28px",
+              background:
+                "rgba(255,255,255,0.96)",
+              backdropFilter: "blur(20px)",
+              boxShadow:
+                "0 25px 60px rgba(0,0,0,0.18)",
+            }}
+          >
+            {/* Login Icon */}
+
+            <Box
+              sx={{
                 display: "flex",
                 justifyContent: "center",
-                alignItems: "center",
-                pointerEvents: "none",
+                mb: 2,
               }}
             >
-              <RotatingRing size={520} strokeWidth={2} />
-            </div>
-
-            {/* Login Card */}
-            <motion.div
-              variants={cardVariants}
-              initial="hidden"
-              animate={isFadingOut ? "exit" : "visible"}
-              style={{
-                width: 420,
-                maxWidth: "90vw",
-                background: "rgba(30,41,59,0.6)",
-                backdropFilter: "blur(20px)",
-                WebkitBackdropFilter: "blur(20px)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                borderRadius: 20,
-                padding: "48px 40px",
-                boxShadow: "0 20px 60px rgba(0,0,0,0.45), 0 0 40px rgba(139,92,246,0.08)",
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              {/* Card top glow */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: -80,
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  width: 200,
-                  height: 200,
+              <Box
+                sx={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: "22px",
                   background:
-                    "radial-gradient(circle, rgba(139,92,246,0.08) 0%, transparent 70%)",
-                  pointerEvents: "none",
+                    "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "white",
+                  boxShadow:
+                    "0 12px 30px rgba(99,102,241,0.35)",
+                }}
+              >
+                <AnimatedIcon>
+                  <LockOutlined
+                    sx={{
+                      fontSize: 34,
+                    }}
+                  />
+                </AnimatedIcon>
+              </Box>
+            </Box>
+
+            {/* Title */}
+
+            <Typography
+              variant="h4"
+              fontWeight={800}
+              textAlign="center"
+              sx={{
+                color: "#111827",
+                mb: 1,
+              }}
+            >
+              Welcome Back
+            </Typography>
+
+            <Typography
+              textAlign="center"
+              sx={{
+                color: "#6b7280",
+                mb: 4,
+              }}
+            >
+              Sign in to access your dashboard
+            </Typography>
+
+            {/* Error */}
+
+            {error && (
+              <Alert
+                severity="error"
+                sx={{
+                  mb: 3,
+                  borderRadius: 2,
+                }}
+              >
+                {error}
+              </Alert>
+            )}
+
+            {/* Form */}
+
+            <Box
+              component="form"
+              onSubmit={handleLogin}
+            >
+              {/* Username */}
+
+              <TextField
+                fullWidth
+                label="Username"
+                value={username}
+                onChange={(e) =>
+                  setUsername(e.target.value)
+                }
+                disabled={loading}
+                autoComplete="username"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Person
+                        sx={{
+                          color: "#6366f1",
+                        }}
+                      />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{
+                  mb: 2.5,
+                  "& .MuiOutlinedInput-root": {
+                    borderRadius: "14px",
+                    "&:hover fieldset": {
+                      borderColor: "#6366f1",
+                    },
+                    "&.Mui-focused fieldset": {
+                      borderColor: "#6366f1",
+                    },
+                  },
+                  "& label.Mui-focused": {
+                    color: "#6366f1",
+                  },
                 }}
               />
 
-              {/* Lock Icon */}
-              <div
-                style={{
+              {/* Password */}
+
+              <TextField
+                fullWidth
+                label="Password"
+                type={
+                  showPassword
+                    ? "text"
+                    : "password"
+                }
+                value={password}
+                onChange={(e) =>
+                  setPassword(e.target.value)
+                }
+                disabled={loading}
+                autoComplete="current-password"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <LockOutlined
+                        sx={{
+                          color: "#6366f1",
+                        }}
+                      />
+                    </InputAdornment>
+                  ),
+
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() =>
+                          setShowPassword(
+                            !showPassword
+                          )
+                        }
+                        edge="end"
+                      >
+                        {showPassword ? (
+                          <VisibilityOff />
+                        ) : (
+                          <Visibility />
+                        )}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{
+                  mb: 1,
+                  "& .MuiOutlinedInput-root": {
+                    borderRadius: "14px",
+                    "&:hover fieldset": {
+                      borderColor: "#6366f1",
+                    },
+                    "&.Mui-focused fieldset": {
+                      borderColor: "#6366f1",
+                    },
+                  },
+                  "& label.Mui-focused": {
+                    color: "#6366f1",
+                  },
+                }}
+              />
+
+              {/* Forgot Password */}
+
+              <Box
+                sx={{
                   display: "flex",
-                  justifyContent: "center",
-                  marginBottom: 28,
-                  position: "relative",
+                  justifyContent: "flex-end",
+                  mb: 3,
                 }}
               >
-                {showKey && (
-                  <div style={{ position: "absolute", right: "calc(50% - 60px)", top: 4 }}>
-                    <AnimatedKey state={keyState} />
-                  </div>
-                )}
-                <AnimatedLock state={lockState} />
-              </div>
-
-              {/* Title */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2, duration: 0.5 }}
-                style={{ textAlign: "center", marginBottom: 8 }}
-              >
-                {showSuccess ? (
-                  <div>
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                    >
-                      <div style={{ color: "#10B981", fontSize: "1rem", fontWeight: 600 }}>
-                        {showSuccess}
-                      </div>
-                      <div style={{ color: "#94A3B8", fontSize: "0.85rem", marginTop: 4 }}>
-                        Redirecting...
-                      </div>
-                    </motion.div>
-                  </div>
-                ) : (
-                  <>
-                    <h1
-                      style={{
-                        fontSize: "1.6rem",
-                        fontWeight: 700,
-                        color: "#F8FAFC",
-                        letterSpacing: "-0.5px",
-                        marginBottom: 4,
-                      }}
-                    >
-                      Welcome Back
-                    </h1>
-                    <p style={{ color: "#94A3B8", fontSize: "0.9rem", fontWeight: 400 }}>
-                      Sign in to continue
-                    </p>
-                  </>
-                )}
-              </motion.div>
-
-              {/* Error Message */}
-              <AnimatePresence>
-                {error && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10, height: 0 }}
-                    animate={{ opacity: 1, y: 0, height: "auto" }}
-                    exit={{ opacity: 0, y: -10, height: 0 }}
-                    transition={{ duration: 0.3 }}
-                    style={{
-                      background: "rgba(239,68,68,0.12)",
-                      border: "1px solid rgba(239,68,68,0.25)",
-                      borderRadius: 10,
-                      padding: "10px 14px",
-                      marginBottom: 20,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        background: "#EF4444",
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span style={{ color: "#FCA5A5", fontSize: "0.85rem" }}>{error}</span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Form */}
-              <form onSubmit={handleLogin}>
-                <div style={{ marginBottom: 18 }}>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "0.8rem",
-                      fontWeight: 500,
-                      color: "#94A3B8",
-                      marginBottom: 6,
-                      letterSpacing: "0.3px",
-                    }}
-                  >
-                    Username
-                  </label>
-                  <div
-                    style={{
-                      position: "relative",
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                  >
-                    <User
-                      size={16}
-                      style={{
-                        position: "absolute",
-                        left: 14,
-                        color: animState !== "idle" ? "#4B5563" : "#64748B",
-                        pointerEvents: "none",
-                        zIndex: 1,
-                      }}
-                    />
-                    <input
-                      ref={emailRef}
-                      type="text"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your username"
-                      disabled={animState !== "idle"}
-                      style={{
-                        width: "100%",
-                        padding: "12px 14px 12px 40px",
-                        background: animState !== "idle" ? "#111827" : "#1E293B",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        borderRadius: 12,
-                        color: "#F8FAFC",
-                        fontSize: "0.9rem",
-                        fontFamily: "'Poppins', sans-serif",
-                        outline: "none",
-                        transition: "all 0.2s ease",
-                        opacity: animState !== "idle" ? 0.5 : 1,
-                        cursor: animState !== "idle" ? "not-allowed" : "text",
-                      }}
-                      onFocus={(e) => {
-                        if (animState === "idle") {
-                          e.target.style.borderColor = "rgba(139,92,246,0.5)";
-                          e.target.style.boxShadow = "0 0 0 3px rgba(139,92,246,0.1)";
-                        }
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = "rgba(255,255,255,0.08)";
-                        e.target.style.boxShadow = "none";
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ marginBottom: 8 }}>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "0.8rem",
-                      fontWeight: 500,
-                      color: "#94A3B8",
-                      marginBottom: 6,
-                      letterSpacing: "0.3px",
-                    }}
-                  >
-                    Password
-                  </label>
-                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                    <Lock
-                      size={16}
-                      style={{
-                        position: "absolute",
-                        left: 14,
-                        color: animState !== "idle" ? "#4B5563" : "#64748B",
-                        pointerEvents: "none",
-                        zIndex: 1,
-                      }}
-                    />
-                    <input
-                      ref={passwordRef}
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      disabled={animState !== "idle"}
-                      style={{
-                        width: "100%",
-                        padding: "12px 44px 12px 40px",
-                        background: animState !== "idle" ? "#111827" : "#1E293B",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        borderRadius: 12,
-                        color: "#F8FAFC",
-                        fontSize: "0.9rem",
-                        fontFamily: "'Poppins', sans-serif",
-                        outline: "none",
-                        transition: "all 0.2s ease",
-                        opacity: animState !== "idle" ? 0.5 : 1,
-                        cursor: animState !== "idle" ? "not-allowed" : "text",
-                      }}
-                      onFocus={(e) => {
-                        if (animState === "idle") {
-                          e.target.style.borderColor = "rgba(139,92,246,0.5)";
-                          e.target.style.boxShadow = "0 0 0 3px rgba(139,92,246,0.1)";
-                        }
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = "rgba(255,255,255,0.08)";
-                        e.target.style.boxShadow = "none";
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      disabled={animState !== "idle"}
-                      style={{
-                        position: "absolute",
-                        right: 10,
-                        background: "none",
-                        border: "none",
-                        cursor: animState !== "idle" ? "not-allowed" : "pointer",
-                        padding: 4,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "#64748B",
-                        opacity: animState !== "idle" ? 0.4 : 1,
-                      }}
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Forgot Password */}
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    marginBottom: 24,
-                    marginTop: 4,
-                  }}
-                >
-                  <Link
-    to="/forgot-password"
-    style={{
-        color: animState !== "idle" ? "#4B5563" : "#8B5CF6",
-        fontSize: "0.8rem",
-        fontWeight: 500,
-        textDecoration: "none",
-        opacity: animState !== "idle" ? 0.4 : 1,
-        pointerEvents: animState !== "idle" ? "none" : "auto",
-    }}
->
-    Forgot Password?
-</Link>
-                </div>
-
-                {/* Sign In Button */}
-                <motion.button
-                  type="submit"
-                  disabled={animState !== "idle" && animState !== "signing" && animState !== "denied" ? true : false}
-                  variants={buttonVariants}
-                  initial="idle"
-                  whileHover={animState === "idle" ? "hover" : ""}
-                  whileTap={animState === "idle" ? "tap" : ""}
-                  animate={
-                    animState === "signing" || animState !== "idle" ? "loading" : "idle"
+                <Button
+                  type="button"
+                  onClick={() =>
+                    navigate("/forgot-password")
                   }
-                  style={{
-                    width: "100%",
-                    padding: "14px 20px",
-                    background: "#8B5CF6",
-                    border: "none",
-                    borderRadius: 14,
-                    color: "#0F172A",
-                    fontSize: "0.95rem",
+                  sx={{
+                    textTransform: "none",
+                    color: "#6366f1",
                     fontWeight: 600,
-                    fontFamily: "'Poppins', sans-serif",
-                    cursor:
-                      animState !== "idle" && animState !== "signing" && animState !== "denied"
-                        ? "not-allowed"
-                        : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    position: "relative",
-                    overflow: "hidden",
-                    opacity:
-                      animState !== "idle" && animState !== "signing" && animState !== "denied"
-                        ? 0.5
-                        : 1,
-                    transition: "box-shadow 0.3s ease, transform 0.2s ease",
-                    boxShadow:
-                      animState === "idle"
-                        ? "0 4px 15px rgba(139,92,246,0.3)"
-                        : "0 4px 15px rgba(139,92,246,0.15)",
                   }}
                 >
-                  {/* Ripple effect background */}
-                  {animState === "idle" && (
-                    <motion.div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        background:
-                          "linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)",
-                        backgroundSize: "200% 100%",
-                      }}
-                      animate={{ backgroundPosition: ["200% 0", "-200% 0"] }}
-                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                    />
-                  )}
+                  Forgot Password?
+                </Button>
+              </Box>
 
-                  {(animState === "signing" || animState === "keyEntering" || animState === "keyInserted" || animState === "keyTurning" || animState === "unlocking") && !showSuccess ? (
-                    <>
-                      <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                      >
-                        <Loader2 size={18} />
-                      </motion.div>
-                      <span style={{ fontWeight: 500, position: "relative", zIndex: 1 }}>
-                        Signing In...
-                      </span>
-                    </>
-                  ) : animState === "granted" || animState === "fadingOut" ? (
-                    <span style={{ fontWeight: 500, position: "relative", zIndex: 1 }}>
-                      <motion.span
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.3 }}
-                      >
-                        ✓ Completed
-                      </motion.span>
-                    </span>
-                  ) : animState === "denied" ? (
-                    <span style={{ fontWeight: 500, position: "relative", zIndex: 1, color: "#94A3B8" }}>
-                      Failed
-                    </span>
-                  ) : (
-                    <>
-                      <span style={{ fontWeight: 500, position: "relative", zIndex: 1 }}>
-                        Sign In
-                      </span>
-                      <ArrowRight size={18} style={{ position: "relative", zIndex: 1 }} />
-                    </>
-                  )}
-                </motion.button>
-              </form>
+              {/* Login Button */}
 
-              {/* Footer */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.6, duration: 0.5 }}
-                style={{
-                  textAlign: "center",
-                  marginTop: 20,
-                  fontSize: "0.75rem",
-                  color: "#4B5563",
+              <Button
+                fullWidth
+                type="submit"
+                disabled={loading}
+                sx={{
+                  height: 54,
+                  borderRadius: "14px",
+                  textTransform: "none",
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: "white",
+                  background:
+                    "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                  boxShadow:
+                    "0 10px 25px rgba(99,102,241,0.3)",
+                  "&:hover": {
+                    background:
+                      "linear-gradient(135deg,#4f46e5,#7c3aed)",
+                    boxShadow:
+                      "0 14px 30px rgba(99,102,241,0.4)",
+                  },
+                  "&.Mui-disabled": {
+                    color: "white",
+                    background:
+                      "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                    opacity: 0.7,
+                  },
                 }}
               >
-                Hostel Management System v2.0
-              </motion.div>
-            </motion.div>
-          </div>
+                {loading ? (
+                  <CircularProgress
+                    size={25}
+                    sx={{
+                      color: "white",
+                    }}
+                  />
+                ) : (
+                  "Sign In"
+                )}
+              </Button>
+            </Box>
 
-          {/* Bottom left branding */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.8, duration: 0.5 }}
-            style={{
-              position: "absolute",
-              bottom: 24,
-              left: 32,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              zIndex: 1,
-            }}
-          >
-            <div
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: "#8B5CF6",
-                boxShadow: "0 0 10px rgba(139,92,246,0.4)",
+            <Divider
+              sx={{
+                my: 3,
               }}
             />
-            <span style={{ color: "#4B5563", fontSize: "0.75rem", letterSpacing: "0.5px" }}>
-              HMS · SECURE LOGIN
-            </span>
-          </motion.div>
+
+            <Typography
+              textAlign="center"
+              variant="body2"
+              sx={{
+                color: "#9ca3af",
+              }}
+            >
+              Hostel Management System
+            </Typography>
+          </Paper>
         </motion.div>
-      ) : (
-        /* Dashboard fade in */
-        <motion.div
-          key="dashboard-loading"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, ease: "easeInOut" }}
-          style={{
-            minHeight: "100vh",
-            background: "#0F172A",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-            style={{
-              width: 40,
-              height: 40,
-              border: "2px solid rgba(139,92,246,0.1)",
-              borderTopColor: "#8B5CF6",
-              borderRadius: "50%",
-            }}
-          />
-        </motion.div>
-      )}
-    </AnimatePresence>
+      </Box>
+    </Box>
   );
 }
 
-export default Login;
+function Feature({
+  icon,
+  title,
+  description,
+}) {
+  return (
+    <MotionBox
+      whileHover={{
+        x: 8,
+      }}
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 2,
+      }}
+    >
+      <Box
+        sx={{
+          width: 46,
+          height: 46,
+          borderRadius: "14px",
+          background:
+            "rgba(255,255,255,0.15)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          border:
+            "1px solid rgba(255,255,255,0.18)",
+        }}
+      >
+        {React.cloneElement(icon, {
+          sx: {
+            fontSize: 25,
+          },
+        })}
+      </Box>
 
+      <Box>
+        <Typography
+          fontWeight={700}
+          sx={{
+            fontSize: 15,
+          }}
+        >
+          {title}
+        </Typography>
 
-
+        <Typography
+          sx={{
+            fontSize: 13,
+            opacity: 0.72,
+          }}
+        >
+          {description}
+        </Typography>
+      </Box>
+    </MotionBox>
+  );
+}

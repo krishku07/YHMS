@@ -21,6 +21,7 @@ import {
   getStudentFees,
   downloadReceipt,
 } from "../../api/feeApi";
+import { getStudentProfile } from "../../api/studentApi";
 import PageHero from "../../components/PageHero";
 import { dataGridPaper, dataGridStyles } from "../../styles/dataGridStyles";
 
@@ -36,19 +37,50 @@ function FeePage() {
   const loadFees = async () => {
     setLoading(true);
     setError("");
+
     try {
-      const studentId = localStorage.getItem("studentId");
+      let studentId =
+        sessionStorage.getItem("studentId") ||
+        localStorage.getItem("studentId");
+
+      // If the login response did not contain studentId, get it from
+      // the authenticated student's profile.
+      if (!studentId) {
+        const profile = await getStudentProfile();
+        studentId = profile?.id ?? profile?.studentId;
+      }
+
+      if (!studentId) {
+        throw new Error("Authenticated student ID was not found.");
+      }
+
       const data = await getStudentFees(studentId);
-      setFees(data);
+      const records = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.content)
+          ? data.content
+          : Array.isArray(data?.fees)
+            ? data.fees
+            : [];
+
+      setFees(records);
     } catch (error) {
-      console.log(error);
-      setError("Failed to load fee records. Please try again.");
+      console.error("Failed to load fee records:", error);
+      setFees([]);
+      setError(
+        error.response?.data?.message ||
+        error.message ||
+        "Failed to load fee records. Please try again."
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const totalAmount = fees.reduce((sum, fee) => sum + fee.amount, 0);
+  const totalAmount = fees.reduce(
+    (sum, fee) => sum + (Number(fee.amount) || 0),
+    0
+  );
 
   const columns = [
     {
@@ -220,7 +252,15 @@ return (
         ) : error ? (
           <Box display="flex" justifyContent="center" alignItems="center" height="100%" flexDirection="column" gap={1}>
             <AlertCircle size={40} color="#EF4444" />
-            <Typography color="#EF4444">{error}</Typography>
+            <Typography color="#EF4444" textAlign="center">{error}</Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={loadFees}
+              sx={{ mt: 1, textTransform: "none", borderRadius: "8px" }}
+            >
+              Retry
+            </Button>
           </Box>
         ) : (
           <DataGrid

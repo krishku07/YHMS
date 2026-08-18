@@ -1,13 +1,19 @@
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 
+// Pages
 import Login from "../pages/Login";
-import AnimatedPageWrapper from "../components/AnimatedPageWrapper";
-
-import DashboardLayout from "../layouts/DashboardLayout";
-import StudentLayout from "../layouts/StudentLayout";
 import ForgotPassword from "../pages/ForgotPassword";
 
+// Components
+import AnimatedPageWrapper from "../components/AnimatedPageWrapper";
+
+// Layouts
+import DashboardLayout from "../layouts/DashboardLayout";
+import StudentLayout from "../layouts/StudentLayout";
+
+// Route Protection
+import ProtectedRoute from "./ProtectedRoute";
 
 // Admin Pages
 import AdminDashboard from "../pages/admin/AdminDashboard";
@@ -25,142 +31,228 @@ import StudentFeePage from "../pages/student/FeePage";
 import RequestOutpassPage from "../pages/student/RequestOutpassPage";
 import OutpassHistoryPage from "../pages/student/OutpassHistoryPage";
 
+
+// ============================================================
+// Animated Route Wrapper
+// ============================================================
+
 function AnimatedRoute({ children }) {
-  return <AnimatedPageWrapper>{children}</AnimatedPageWrapper>;
+    return (
+        <AnimatedPageWrapper>
+            {children}
+        </AnimatedPageWrapper>
+    );
 }
+
+
+// ============================================================
+// Application Routes
+// ============================================================
 
 function AppRoutes() {
-  const location = useLocation();
+    const location = useLocation();
 
-  return (
-    <AnimatePresence mode="wait">
-      <Routes location={location} key={location.pathname}>
-        {/* Login */}
-        <Route
-          path="/"
-          element={
-            <AnimatedRoute>
-              <Login />
-            </AnimatedRoute>
-          }
-        />
+    return (
+        <AnimatePresence mode="wait">
+            <Routes
+                location={location}
+                key={location.pathname}
+            >
 
-          <Route
-    path="/forgot-password"
-    element={<ForgotPassword />}
-/>
+                {/* ==================================================
+                    AUTHENTICATION
+                ================================================== */}
 
-        {/* ================= ADMIN ================= */}
-        <Route element={<DashboardLayout />}>
-          <Route
-            path="/admin"
-            element={
-              <AnimatedRoute>
-                <AdminDashboard />
-              </AnimatedRoute>
-            }
-          />
+                <Route
+                    path="/"
+                    element={
+                        <AnimatedRoute>
+                            <Login />
+                        </AnimatedRoute>
+                    }
+                />
 
-        
+                <Route
+                    path="/forgot-password"
+                    element={<ForgotPassword />}
+                />
 
-          <Route path="/admin/notices" element={<Notice />} />
-          <Route
-            path="/admin/employees"
-            element={
-              <AnimatedRoute>
-                <EmployeePage />
-              </AnimatedRoute>
-            }
-          />
-          <Route
-            path="/admin/students"
-            element={
-              <AnimatedRoute>
-                <StudentPage />
-              </AnimatedRoute>
-            }
-          />
-          <Route
-            path="/admin/rooms"
-            element={
-              <AnimatedRoute>
-                <RoomPage />
-              </AnimatedRoute>
-            }
-          />
-          <Route
-            path="/admin/fees"
-            element={
-              <AnimatedRoute>
-                <FeePage />
-              </AnimatedRoute>
-            }
-          />
-          <Route
-            path="/admin/outpass"
-            element={
-              <AnimatedRoute>
-                <AdminOutpassPage />
-              </AnimatedRoute>
-            }
-          />
-        </Route>
 
-        {/* ================= STUDENT ================= */}
-        <Route element={<StudentLayout />}>
-          <Route
-            path="/student"
-            element={
-              <AnimatedRoute>
-                <StudentDashboard />
-              </AnimatedRoute>
-            }
-          />
-          <Route
-            path="/student/profile"
-            element={
-              <AnimatedRoute>
-                <ProfilePage />
-              </AnimatedRoute>
-            }
-          />
-          <Route
-            path="/student/fees"
-            element={
-              <AnimatedRoute>
-                <StudentFeePage />
-              </AnimatedRoute>
-            }
-          />
-          <Route
-            path="/student/request-outpass"
-            element={
-              <AnimatedRoute>
-                <RequestOutpassPage />
-              </AnimatedRoute>
-            }
-          />
-          <Route
-            path="/student/outpass-history"
-            element={
-              <AnimatedRoute>
-                <OutpassHistoryPage />
-              </AnimatedRoute>
-            }
-          />
-        </Route>
-      </Routes>
-    </AnimatePresence>
-  );
+                {/* ==================================================
+                    ADMIN ROUTES
+                    Only ADMIN and JUNIOR_ADMIN can access these
+                ================================================== */}
+
+                <Route
+                    element={
+                        <ProtectedRoute
+                            allowedRoles={[
+                                "admin",
+                                "junior_admin"
+                            ]}
+                        >
+                            <DashboardLayout />
+                        </ProtectedRoute>
+                    }
+                >
+
+                    {/* Admin Dashboard */}
+                    <Route
+                        path="/admin"
+                        element={
+                            <AnimatedRoute>
+                                <AdminDashboard />
+                            </AnimatedRoute>
+                        }
+                    />
+
+                    {/* Notices */}
+                    <Route
+                        path="/admin/notices"
+                        element={
+                            <Notice />
+                        }
+                    />
+
+                    {/* Employees */}
+                    <Route
+                        path="/admin/employees"
+                        element={
+                            <AnimatedRoute>
+                                <EmployeePage />
+                            </AnimatedRoute>
+                        }
+                    />
+
+                    {/* Students */}
+                    <Route
+                        path="/admin/students"
+                        element={
+                            <AnimatedRoute>
+                                <StudentPage />
+                            </AnimatedRoute>
+                        }
+                    />
+
+                    {/* Rooms */}
+                    <Route
+                        path="/admin/rooms"
+                        element={
+                            <AnimatedRoute>
+                                <RoomPage />
+                            </AnimatedRoute>
+                        }
+                    />
+
+                    {/* Fees */}
+                    <Route
+                        path="/admin/fees"
+                        element={
+                            <AnimatedRoute>
+                                <FeePage />
+                            </AnimatedRoute>
+                        }
+                    />
+
+                    {/* Outpass */}
+                    <Route
+                        path="/admin/outpass"
+                        element={
+                            <AnimatedRoute>
+                                <AdminOutpassPage />
+                            </AnimatedRoute>
+                        }
+                    />
+
+                </Route>
+
+
+                {/* ==================================================
+                    STUDENT ROUTES
+                    Only STUDENT can access these
+                ================================================== */}
+
+                <Route
+                    element={
+                        <ProtectedRoute
+                            allowedRoles={[
+                                "student"
+                            ]}
+                        >
+                            <StudentLayout />
+                        </ProtectedRoute>
+                    }
+                >
+
+                    {/* Student Dashboard */}
+                    <Route
+                        path="/student"
+                        element={
+                            <AnimatedRoute>
+                                <StudentDashboard />
+                            </AnimatedRoute>
+                        }
+                    />
+
+                    {/* Profile */}
+                    <Route
+                        path="/student/profile"
+                        element={
+                            <AnimatedRoute>
+                                <ProfilePage />
+                            </AnimatedRoute>
+                        }
+                    />
+
+                    {/* Fees */}
+                    <Route
+                        path="/student/fees"
+                        element={
+                            <AnimatedRoute>
+                                <StudentFeePage />
+                            </AnimatedRoute>
+                        }
+                    />
+
+                    {/* Request Outpass */}
+                    <Route
+                        path="/student/request-outpass"
+                        element={
+                            <AnimatedRoute>
+                                <RequestOutpassPage />
+                            </AnimatedRoute>
+                        }
+                    />
+
+                    {/* Outpass History */}
+                    <Route
+                        path="/student/outpass-history"
+                        element={
+                            <AnimatedRoute>
+                                <OutpassHistoryPage />
+                            </AnimatedRoute>
+                        }
+                    />
+
+                </Route>
+
+            </Routes>
+        </AnimatePresence>
+    );
 }
+
+
+// ============================================================
+// Browser Router Wrapper
+// ============================================================
 
 function AppRoutesWrapper() {
-  return (
-    <BrowserRouter>
-      <AppRoutes />
-    </BrowserRouter>
-  );
+    return (
+        <BrowserRouter>
+            <AppRoutes />
+        </BrowserRouter>
+    );
 }
 
-export default AppRoutesWrapper;
 
+export default AppRoutesWrapper;

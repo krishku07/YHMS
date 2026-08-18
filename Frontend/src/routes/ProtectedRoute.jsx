@@ -1,94 +1,266 @@
 import { Navigate, useLocation } from "react-router-dom";
 
+// =====================================================
+// DECODE JWT
+// =====================================================
+
 function decodeJwt(token) {
   try {
-    const payload = token.split(".")[1];
+    const parts = token.split(".");
 
-    if (!payload) {
+    if (parts.length !== 3) {
       return null;
     }
 
-    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const payload = parts[1];
 
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split("")
-        .map(
-          (char) =>
-            "%" + ("00" + char.charCodeAt(0).toString(16)).slice(-2)
-        )
-        .join("")
+    // Convert Base64URL → Base64
+    const base64 = payload
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+    // Add required padding
+    const padded = base64.padEnd(
+      base64.length + ((4 - (base64.length % 4)) % 4),
+      "="
     );
 
-    return JSON.parse(jsonPayload);
+    const decoded = atob(padded);
+
+    return JSON.parse(decoded);
   } catch (error) {
-    console.error("Invalid JWT:", error);
+    console.error("JWT decode error:", error);
     return null;
   }
 }
 
-function ProtectedRoute({ children, allowedRoles }) {
+// =====================================================
+// NORMALIZE ROLE
+// =====================================================
+
+function normalizeRole(role) {
+  if (!role) {
+    return null;
+  }
+
+  return role
+    .toString()
+    .replace(/^ROLE_/i, "")
+    .trim()
+    .toLowerCase();
+}
+
+// =====================================================
+// PROTECTED ROUTE
+// =====================================================
+
+function ProtectedRoute({
+  children,
+  allowedRoles = [],
+}) {
   const location = useLocation();
+
+  // ===================================================
+  // GET TOKEN
+  // ===================================================
 
   const token = sessionStorage.getItem("token");
 
-  // No token → not logged in
+  console.log(
+    "PROTECTED ROUTE:",
+    location.pathname
+  );
+
+  console.log(
+    "TOKEN EXISTS:",
+    !!token
+  );
+
+  // ---------------------------------------------------
+  // No token
+  // ---------------------------------------------------
+
   if (!token) {
+    console.log(
+      "NO TOKEN → REDIRECTING TO LOGIN"
+    );
+
     return (
       <Navigate
         to="/"
         replace
-        state={{ from: location.pathname }}
+        state={{
+          from: location.pathname,
+        }}
       />
     );
   }
 
+  // ===================================================
+  // DECODE TOKEN
+  // ===================================================
+
   const payload = decodeJwt(token);
 
-  // Invalid token
-  if (!payload) {
-    sessionStorage.clear();
-
-    return <Navigate to="/" replace />;
-  }
-
-  // Check token expiration
-  if (payload.exp && Date.now() >= payload.exp * 1000) {
-    sessionStorage.clear();
-
-    return <Navigate to="/" replace />;
-  }
-
-  let role = payload.role;
-
-  if (!role) {
-    sessionStorage.clear();
-
-    return <Navigate to="/" replace />;
-  }
-
-  role = role.toLowerCase();
-
-  const normalizedRoles = allowedRoles.map((r) =>
-    r.toLowerCase()
+  console.log(
+    "JWT PAYLOAD:",
+    payload
   );
 
-  // Role not allowed
-  if (!normalizedRoles.includes(role)) {
-    if (role === "student") {
-      return <Navigate to="/student" replace />;
-    }
+  // ---------------------------------------------------
+  // Invalid token
+  // ---------------------------------------------------
 
-    if (role === "admin") {
-      return <Navigate to="/admin" replace />;
-    }
+  if (!payload) {
+    console.log(
+      "INVALID TOKEN → LOGOUT"
+    );
 
-    if (role === "junior_admin") {
-      return <Navigate to="/admin" replace />;
-    }
+    sessionStorage.clear();
 
-    return <Navigate to="/" replace />;
+    return (
+      <Navigate
+        to="/"
+        replace
+      />
+    );
   }
+
+  // ===================================================
+  // CHECK EXPIRATION
+  // ===================================================
+
+  if (
+    payload.exp &&
+    Date.now() >= payload.exp * 1000
+  ) {
+    console.log(
+      "TOKEN EXPIRED → LOGOUT"
+    );
+
+    sessionStorage.clear();
+
+    return (
+      <Navigate
+        to="/"
+        replace
+      />
+    );
+  }
+
+  // ===================================================
+  // GET ROLE
+  // ===================================================
+
+  let role =
+    payload.role ||
+    payload.authority ||
+    sessionStorage.getItem("role");
+
+  role = normalizeRole(role);
+
+  console.log(
+    "JWT ROLE:",
+    payload.role
+  );
+
+  console.log(
+    "NORMALIZED ROLE:",
+    role
+  );
+
+  console.log(
+    "ALLOWED ROLES:",
+    allowedRoles
+  );
+
+  // ---------------------------------------------------
+  // No role
+  // ---------------------------------------------------
+
+  if (!role) {
+    console.log(
+      "NO ROLE → LOGOUT"
+    );
+
+    sessionStorage.clear();
+
+    return (
+      <Navigate
+        to="/"
+        replace
+      />
+    );
+  }
+
+  // ===================================================
+  // NORMALIZE ALLOWED ROLES
+  // ===================================================
+
+  const normalizedRoles =
+    allowedRoles.map((item) =>
+      normalizeRole(item)
+    );
+
+  // ===================================================
+  // ROLE CHECK
+  // ===================================================
+
+  if (
+    !normalizedRoles.includes(role)
+  ) {
+    console.log(
+      "ROLE NOT ALLOWED:",
+      role,
+      normalizedRoles
+    );
+
+    // -------------------------------------------------
+    // Student trying to access admin
+    // -------------------------------------------------
+
+    if (role === "student") {
+      return (
+        <Navigate
+          to="/student"
+          replace
+        />
+      );
+    }
+
+    // -------------------------------------------------
+    // Admin / Junior Admin trying to access student
+    // -------------------------------------------------
+
+    if (
+      role === "admin" ||
+      role === "junior_admin"
+    ) {
+      return (
+        <Navigate
+          to="/admin"
+          replace
+        />
+      );
+    }
+
+    return (
+      <Navigate
+        to="/"
+        replace
+      />
+    );
+  }
+
+  // ===================================================
+  // AUTHORIZED
+  // ===================================================
+
+  console.log(
+    "ACCESS GRANTED:",
+    location.pathname,
+    role
+  );
 
   return children;
 }
